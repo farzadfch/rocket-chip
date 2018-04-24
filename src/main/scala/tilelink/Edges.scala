@@ -282,6 +282,22 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := UInt(0)
+    a.dm      := Bool(false)
+    (legal, a)
+  }
+
+  def AcquireBlock(fromSource: UInt, toAddress: UInt, lgSize: UInt, growPermissions: UInt, dm: Bool) = {
+    require (manager.anySupportAcquireB)
+    val legal = manager.supportsAcquireBFast(toAddress, lgSize)
+    val a = Wire(new TLBundleA(bundle))
+    a.opcode  := TLMessages.AcquireBlock
+    a.param   := growPermissions
+    a.size    := lgSize
+    a.source  := fromSource
+    a.address := toAddress
+    a.mask    := mask(toAddress, lgSize)
+    a.data    := UInt(0)
+    a.dm      := dm
     (legal, a)
   }
 
@@ -296,6 +312,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := UInt(0)
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -376,6 +393,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := UInt(0)
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -390,6 +408,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := data
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -404,6 +423,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask
     a.data    := data
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -418,6 +438,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := data
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -432,6 +453,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := data
+    a.dm      := Bool(false)
     (legal, a)
   }
 
@@ -446,6 +468,7 @@ class TLEdgeOut(
     a.address := toAddress
     a.mask    := mask(toAddress, lgSize)
     a.data    := UInt(0)
+    a.dm      := Bool(false)
     (legal, a)
   }
 

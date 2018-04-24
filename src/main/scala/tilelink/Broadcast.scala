@@ -231,6 +231,7 @@ class TLBroadcastTracker(id: Int, lineBytes: Int, probeCountBits: Int, bufferles
   val opcode  = Reg(io.in_a.bits.opcode)
   val param   = Reg(io.in_a.bits.param)
   val size    = Reg(io.in_a.bits.size)
+  val dm      = Reg(io.in_a.bits.dm)
   val source  = Reg(io.in_a.bits.source)
   val address = RegInit(UInt(id << lineShift, width = io.in_a.bits.address.getWidth))
   val count   = Reg(UInt(width = probeCountBits))
@@ -243,6 +244,7 @@ class TLBroadcastTracker(id: Int, lineBytes: Int, probeCountBits: Int, bufferles
     opcode  := io.in_a.bits.opcode
     param   := io.in_a.bits.param
     size    := io.in_a.bits.size
+    dm      := io.in_a.bits.dm
     source  := io.in_a.bits.source
     address := io.in_a.bits.address
     count   := io.probe
@@ -286,6 +288,7 @@ class TLBroadcastTracker(id: Int, lineBytes: Int, probeCountBits: Int, bufferles
   io.out_a.bits.opcode  := Mux(acquire, TLMessages.Get, opcode)
   io.out_a.bits.param   := Mux(acquire, UInt(0), param)
   io.out_a.bits.size    := size
+  io.out_a.bits.dm      := dm
   io.out_a.bits.source  := Cat(Mux(acquire, transform, PASS), source)
   io.out_a.bits.address := address
   io.out_a.bits.mask    := o_data.bits.mask

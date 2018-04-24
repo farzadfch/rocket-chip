@@ -213,10 +213,12 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val s2_req_block_addr = (s2_req.addr >> idxLSB) << idxLSB
   val s2_uncached = Reg(Bool())
   val s2_uncached_resp_addr = Reg(UInt()) // should be DCE'd in synthesis
+  val s2_dm = Reg(Bool())
   when (s1_valid_not_nacked || s1_flush_valid) {
     s2_req := s1_req
     s2_req.addr := s1_paddr
     s2_uncached := !tlb.io.resp.cacheable
+    s2_dm := tlb.io.resp.dm
   }
   val s2_read = isRead(s2_req.cmd)
   val s2_write = isWrite(s2_req.cmd)
@@ -391,7 +393,7 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val a_size = mtSize(s2_req.typ)
   val a_data = Fill(beatWords, pstore1_data)
   val acquire = if (edge.manager.anySupportAcquireT) {
-    edge.AcquireBlock(UInt(0), acquire_address, lgCacheBlockBytes, s2_grow_param)._2 // Cacheability checked by tlb
+    edge.AcquireBlock(UInt(0), acquire_address, lgCacheBlockBytes, s2_grow_param, s2_dm)._2 // Cacheability checked by tlb
   } else {
     Wire(new TLBundleA(edge.bundle))
   }
