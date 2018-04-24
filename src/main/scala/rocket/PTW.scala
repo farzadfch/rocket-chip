@@ -49,7 +49,8 @@ class DatapathPTWIO(implicit p: Parameters) extends CoreBundle()(p)
 
 class PTE(implicit p: Parameters) extends CoreBundle()(p) {
   val ppn = UInt(width = 54)
-  val reserved_for_software = Bits(width = 2)
+  val dm = Bool() // deterministic memory
+  val reserved_for_software = Bits(width = 1)
   val d = Bool()
   val a = Bool()
   val g = Bool()
@@ -150,6 +151,7 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
     class Entry extends Bundle {
       val tag = UInt(width = tagBits)
       val ppn = UInt(width = ppnBits)
+      val dm = Bool() // deterministic memory
       val d = Bool()
       val a = Bool()
       val u = Bool()

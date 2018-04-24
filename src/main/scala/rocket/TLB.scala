@@ -50,6 +50,7 @@ class TLBResp(implicit p: Parameters) extends CoreBundle()(p) {
   val ma = new TLBExceptions
   val cacheable = Bool()
   val prefetchable = Bool()
+  val dm = Bool() // deterministic memory
 }
 
 class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(p) {
@@ -76,6 +77,7 @@ class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TL
     val paa = Bool() // AMO arithmetic
     val eff = Bool() // get/put effects
     val c = Bool()
+    val dm = Bool() // deterministic memory
   }
 
   val totalEntries = nEntries + 1
@@ -162,6 +164,7 @@ class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TL
     newEntry.pal := prot_al
     newEntry.paa := prot_aa
     newEntry.eff := prot_eff
+    newEntry.dm := pte.dm
 
     valid := valid | UIntToOH(waddr)
     reg_entries(waddr) := newEntry.asUInt
@@ -184,6 +187,7 @@ class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TL
   val eff_array = Cat(Fill(2, prot_eff), entries.init.map(_.eff).asUInt)
   val c_array = Cat(Fill(2, cacheable), entries.init.map(_.c).asUInt)
   val prefetchable_array = Cat(cacheable && homogeneous, false.B, entries.init.map(_.c).asUInt)
+  val dm_array = Cat(Fill(2, io.ptw.resp.bits.pte.dm), entries.init.map(_.dm).asUInt)
 
   val misaligned = (io.req.bits.vaddr & (UIntToOH(io.req.bits.size) - 1)).orR
   val bad_va = vm_enabled &&
@@ -232,6 +236,7 @@ class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TL
   io.resp.prefetchable := (prefetchable_array & hits).orR && edge.manager.managers.forall(m => !m.supportsAcquireB || m.supportsHint)
   io.resp.miss := do_refill || tlb_miss || multipleHits
   io.resp.paddr := Cat(ppn, io.req.bits.vaddr(pgIdxBits-1, 0))
+  io.resp.dm := (dm_array & hits).orR
 
   io.ptw.req.valid := state === s_request
   io.ptw.req.bits <> io.ptw.status
