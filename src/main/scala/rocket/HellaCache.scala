@@ -225,13 +225,15 @@ trait HasHellaCacheModule extends HasTileLinkMasterPortModule {
 class L1Metadata(implicit p: Parameters) extends L1HellaCacheBundle()(p) {
   val coh = new ClientMetadata
   val tag = UInt(width = tagBits)
+  val dm = Bool() // deterministic memory
 }
 
 object L1Metadata {
-  def apply(tag: Bits, coh: ClientMetadata)(implicit p: Parameters) = {
+  def apply(tag: Bits, coh: ClientMetadata, dm: Bool)(implicit p: Parameters) = {
     val meta = Wire(new L1Metadata)
     meta.tag := tag
     meta.coh := coh
+    meta.dm := dm
     meta
   }
 }

@@ -181,7 +181,7 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
       val baseAddr = GetPropertyByHartId(p(RocketTilesKey), _.dcache.flatMap(_.scratch.map(_.U)), io.hartid)
       val inScratchpad = s1_paddr >= baseAddr && s1_paddr < baseAddr + nSets * cacheBlockBytes
       val hitState = Mux(inScratchpad, ClientMetadata.maximum, ClientMetadata.onReset)
-      val dummyMeta = L1Metadata(UInt(0), ClientMetadata.onReset)
+      val dummyMeta = L1Metadata(UInt(0), ClientMetadata.onReset, false)
       (inScratchpad, hitState, Seq(tECC.encode(dummyMeta.asUInt)), dummyMeta)
     } else {
       val metaReq = metaArb.io.out
