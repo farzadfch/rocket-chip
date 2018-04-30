@@ -85,6 +85,7 @@ class ICacheBundle(outer: ICache) extends CoreBundle()(outer.p) {
   val hartid = UInt(INPUT, hartIdLen)
   val req = Decoupled(new ICacheReq).flip
   val s1_paddr = UInt(INPUT, paddrBits) // delayed one cycle w.r.t. req
+  val s1_dm = Bool(INPUT)
   val s2_vaddr = UInt(INPUT, vaddrBits) // delayed two cycles w.r.t. req
   val s1_kill = Bool(INPUT) // delayed one cycle w.r.t. req
   val s2_kill = Bool(INPUT) // delayed two cycles; prevents I$ miss emission
@@ -148,6 +149,7 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   val hint_outstanding = RegInit(false.B)
   val s2_miss = s2_valid && !s2_hit && !io.s2_kill && !RegNext(refill_valid)
   val refill_addr = RegEnable(io.s1_paddr, s1_valid && !(refill_valid || s2_miss))
+  val s2_dm = RegNext(io.s1_dm)
   val refill_tag = refill_addr(tagBits+untagBits-1,untagBits)
   val refill_idx = refill_addr(untagBits-1,blockOffBits)
   val refill_one_beat = tl_out.d.fire() && edge_out.hasData(tl_out.d.bits)
@@ -340,7 +342,8 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer)
   tl_out.a.bits := edge_out.Get(
                     fromSource = UInt(0),
                     toAddress = (refill_addr >> blockOffBits) << blockOffBits,
-                    lgSize = lgCacheBlockBytes)._2
+                    lgSize = lgCacheBlockBytes,
+                    dm = s2_dm)._2
   if (cacheParams.prefetch) {
     val (crosses_page, next_block) = Split(refill_addr(pgIdxBits-1, blockOffBits) +& 1, pgIdxBits-blockOffBits)
     when (tl_out.a.fire()) {

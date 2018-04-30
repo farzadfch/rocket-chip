@@ -397,6 +397,21 @@ class TLEdgeOut(
     (legal, a)
   }
 
+  def Get(fromSource: UInt, toAddress: UInt, lgSize: UInt, dm: Bool) = {
+    require (manager.anySupportGet)
+    val legal = manager.supportsGetFast(toAddress, lgSize)
+    val a = Wire(new TLBundleA(bundle))
+    a.opcode  := TLMessages.Get
+    a.param   := UInt(0)
+    a.size    := lgSize
+    a.source  := fromSource
+    a.address := toAddress
+    a.mask    := mask(toAddress, lgSize)
+    a.data    := UInt(0)
+    a.dm      := dm
+    (legal, a)
+  }
+
   def Put(fromSource: UInt, toAddress: UInt, lgSize: UInt, data: UInt) = {
     require (manager.anySupportPutFull)
     val legal = manager.supportsPutFullFast(toAddress, lgSize)
