@@ -151,7 +151,7 @@ class TLToAXI4(val combinational: Boolean = true, val adapterName: Option[String
       arw.lock  := UInt(0) // not exclusive (LR/SC unsupported b/c no forward progress guarantee)
       arw.cache := UInt(0) // do not allow AXI to modify our transactions
       arw.prot  := AXI4Parameters.PROT_PRIVILEDGED
-      arw.qos   := UInt(0) // no QoS
+      arw.qos := UInt(0) | in.a.bits.dm
       arw.user.foreach { _ := a_state }
 
       val stall = sourceStall(in.a.bits.source)

@@ -187,7 +187,7 @@ class TLB(instruction: Boolean, lgMaxSize: Int, nEntries: Int)(implicit edge: TL
   val eff_array = Cat(Fill(2, prot_eff), entries.init.map(_.eff).asUInt)
   val c_array = Cat(Fill(2, cacheable), entries.init.map(_.c).asUInt)
   val prefetchable_array = Cat(cacheable && homogeneous, false.B, entries.init.map(_.c).asUInt)
-  val dm_array = Cat(Fill(2, io.ptw.resp.bits.pte.dm), entries.init.map(_.dm).asUInt)
+  val dm_array = Cat(Fill(2, io.ptw.resp.bits.pte.dm && vm_enabled), entries.init.map(_.dm).asUInt)
 
   val misaligned = (io.req.bits.vaddr & (UIntToOH(io.req.bits.size) - 1)).orR
   val bad_va = vm_enabled &&
