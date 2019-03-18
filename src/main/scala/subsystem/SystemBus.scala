@@ -63,7 +63,9 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
       (name: Option[String], buffer: BufferParams = BufferParams.none, cork: Option[Boolean] = None)
       (gen: => TLOutwardNode): NoHandle = {
     from("tile" named name) {
-      master_splitter.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
+      val bwRegulator = LazyModule(new BwRegulator)
+      bwRegulator.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
+      master_splitter.node := bwRegulator.node
     }
   }
 }
