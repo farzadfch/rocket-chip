@@ -31,6 +31,9 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
   val control_bus = LazyModule(new PeripheryBus(cbus_params))
   control_bus.crossFromSystemBus { this.toSlaveBus("cbus") }
 
+  private val bwRegulator = LazyModule(new BwRegulator(0x20000000L))
+  control_bus.toVariableWidthSlave(Some("bw-reg")) { bwRegulator.regnode }
+
   private val master_splitter = LazyModule(new TLSplitter)
   inwardNode :=* master_splitter.node
 
@@ -63,7 +66,6 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
       (name: Option[String], buffer: BufferParams = BufferParams.none, cork: Option[Boolean] = None)
       (gen: => TLOutwardNode): NoHandle = {
     from("tile" named name) {
-      val bwRegulator = LazyModule(new BwRegulator)
       bwRegulator.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
       master_splitter.node := bwRegulator.node
     }
