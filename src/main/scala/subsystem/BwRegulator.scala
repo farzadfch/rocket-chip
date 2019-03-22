@@ -21,23 +21,30 @@ class BwRegulator(
     managerFn = { case m => m })
 
   lazy val module = new LazyModuleImp(this) {
-    val w = 10
+    val w = 23
     var maxXactionRegs = Seq.empty[UInt]
+    val windowCntr = RegInit(UInt(w.W), 0.U)
+    val windowSize = RegInit(UInt(w.W), 0x7fffff.U)
+
+    val resetWindow = windowCntr >= windowSize
+    when (resetWindow) {
+      windowCntr := 0.U
+    } .otherwise {
+      windowCntr := windowCntr + 1.U
+    }
 
     (node.in zip node.out) foreach { case ((in, _),(out, _)) =>
       out <> in
 
-      val windowCntr = RegInit(UInt(w.W), 0.U)
       val xactionCntr = RegInit(UInt(w.W), 0.U)
-      val maxXaction = RegInit(UInt(w.W), 1023.U)
+      val maxXaction = RegInit(UInt(w.W), 0x7fffff.U)
       maxXactionRegs = maxXactionRegs :+ maxXaction
 
-      windowCntr := windowCntr + 1.U
       when (xactionCntr >= maxXaction) {
         out.a.valid := false.B
         in.a.ready := false.B
       }
-      when (windowCntr === 0.U) {
+      when (resetWindow) {
         xactionCntr := 0.U
       }
       when (out.a.fire()) {
@@ -46,8 +53,11 @@ class BwRegulator(
     }
 
     val maxRegFields = maxXactionRegs.zipWithIndex.map { case (reg, i) =>
-      8*i -> Seq(RegField(w, reg)) }
-    regnode.regmap(maxRegFields: _*)
+      8*i -> Seq(RegField(w, reg,
+      RegFieldDesc(s"maxxaction$i", s"Maximum number of transactions for requester $i"))) }
+    val windowRegField = maxXactionRegs.length*8 -> Seq(RegField(w, windowSize,
+      RegFieldDesc("windowsize", "Size of the window")))
+    regnode.regmap(maxRegFields :+ windowRegField: _*)
   }
 }
 
