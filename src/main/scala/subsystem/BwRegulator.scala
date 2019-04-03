@@ -1,6 +1,6 @@
 package freechips.rocketchip.subsystem
 
-import Chisel._
+import chisel3._
 import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
@@ -21,10 +21,10 @@ class BwRegulator(
     managerFn = { case m => m })
 
   lazy val module = new LazyModuleImp(this) {
-    val w = 23
+    val w = 32
     var maxXactionRegs = Seq.empty[UInt]
     val windowCntr = RegInit(UInt(w.W), 0.U)
-    val windowSize = RegInit(UInt(w.W), 0x7fffff.U)
+    val windowSize = RegInit(UInt(w.W), 0xffffffffL.U)
 
     val resetWindow = windowCntr >= windowSize
     when (resetWindow) {
@@ -37,7 +37,7 @@ class BwRegulator(
       out <> in
 
       val xactionCntr = RegInit(UInt(w.W), 0.U)
-      val maxXaction = RegInit(UInt(w.W), 0x7fffff.U)
+      val maxXaction = RegInit(UInt(w.W), 0xffffffffL.U)
       maxXactionRegs = maxXactionRegs :+ maxXaction
 
       when (xactionCntr >= maxXaction) {
@@ -52,12 +52,12 @@ class BwRegulator(
       }
     }
 
+    val windowRegField = Seq(0 -> Seq(RegField(w, windowSize,
+      RegFieldDesc("windowsize", "Size of the window"))))
     val maxRegFields = maxXactionRegs.zipWithIndex.map { case (reg, i) =>
-      8*i -> Seq(RegField(w, reg,
+      4*(i+1) -> Seq(RegField(w, reg,
       RegFieldDesc(s"maxxaction$i", s"Maximum number of transactions for requester $i"))) }
-    val windowRegField = maxXactionRegs.length*8 -> Seq(RegField(w, windowSize,
-      RegFieldDesc("windowsize", "Size of the window")))
-    regnode.regmap(maxRegFields :+ windowRegField: _*)
+    regnode.regmap(windowRegField ++ maxRegFields: _*)
   }
 }
 
