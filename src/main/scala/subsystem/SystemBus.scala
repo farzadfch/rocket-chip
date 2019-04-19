@@ -49,7 +49,7 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
     }
 
   def fromMasterBus(name: String): (=> TLOutwardNode) => NoHandle =
-    gen => from(s"bus_named_$name") { master_splitter.node :=* gen }
+    gen => from(s"bus_named_$name") { master_splitter.node :=* bwRegulator.node :=* gen }
 
   def toMemoryBus(gen: => TLInwardNode) {
     to("mbus") { gen := outwardNode }
@@ -66,8 +66,7 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
       (name: Option[String], buffer: BufferParams = BufferParams.none, cork: Option[Boolean] = None)
       (gen: => TLOutwardNode): NoHandle = {
     from("tile" named name) {
-      bwRegulator.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
-      master_splitter.node := bwRegulator.node
+      master_splitter.node := bwRegulator.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
     }
   }
 }
