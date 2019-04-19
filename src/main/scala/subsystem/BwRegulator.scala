@@ -23,6 +23,7 @@ class BwRegulator(
   lazy val module = new LazyModuleImp(this) {
     val w = 32
     var maxXactionRegs = Seq.empty[UInt]
+    var masterNames = Seq.empty[String]
     val windowCntr = RegInit(UInt(w.W), 0.U)
     val windowSize = RegInit(UInt(w.W), 0xffffffffL.U)
 
@@ -33,8 +34,10 @@ class BwRegulator(
       windowCntr := windowCntr + 1.U
     }
 
-    (node.in zip node.out) foreach { case ((in, _),(out, _)) =>
+    (node.in zip node.out) foreach { case ((in, edge_in),(out, _)) =>
       out <> in
+
+      masterNames = masterNames :+ edge_in.client.clients(0).name
 
       val xactionCntr = RegInit(UInt(w.W), 0.U)
       val maxXaction = RegInit(UInt(w.W), 0xffffffffL.U)
@@ -54,10 +57,16 @@ class BwRegulator(
 
     val windowRegField = Seq(0 -> Seq(RegField(w, windowSize,
       RegFieldDesc("windowsize", "Size of the window"))))
+
     val maxRegFields = maxXactionRegs.zipWithIndex.map { case (reg, i) =>
       4*(i+1) -> Seq(RegField(w, reg,
-      RegFieldDesc(s"maxxaction$i", s"Maximum number of transactions for requester $i"))) }
+      RegFieldDesc(s"maxxaction$i", s"Maximum number of transactions for ${masterNames(i)}"))) }
+
     regnode.regmap(windowRegField ++ maxRegFields: _*)
+
+    println("\nBW regulated masters in order they appear in register map:")
+    masterNames.foreach(println)
+    println
   }
 }
 
