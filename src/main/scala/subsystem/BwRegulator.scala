@@ -37,7 +37,7 @@ class BwRegulator(
     val enableMasters = RegInit(VecInit(Seq.fill(n)(false.B)))
     val domainId = Reg(Vec(n, UInt(log2Ceil(n).W)))
 
-    when (windowCntr >= windowSize || enableBW) {
+    when (windowCntr >= windowSize || !enableBW) {
       windowCntr := 0.U
       xactionCntrs.foreach(_ := 0.U)
     } .otherwise {
@@ -65,7 +65,7 @@ class BwRegulator(
     val enableBWField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
       RegFieldDesc("enableBW", "Enable BW-regulator"))))
 
-    val windowRegField = Seq(1 -> Seq(RegField(windowSize.getWidth, windowSize,
+    val windowRegField = Seq(4*1 -> Seq(RegField(windowSize.getWidth, windowSize,
       RegFieldDesc("windowsize", "Size of the window"))))
 
     val maxRegFields = maxXactionRegs.zipWithIndex.map { case (reg, i) =>
