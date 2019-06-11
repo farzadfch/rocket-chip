@@ -31,15 +31,16 @@ class BwRegulator(
     val memBase = p(ExtMem).get.base.U
 
     val w = 32
+    val nDomain = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
     val windowCntr = Reg(UInt(w.W))
     val windowSize = Reg(UInt(w.W))
-    val xactionCntrs = Reg(Vec(n, UInt(w.W)))
-    val maxXactionRegs = Reg(Vec(n, UInt(w.W)))
+    val xactionCntrs = Reg(Vec(nDomain, UInt(w.W)))
+    val maxXactionRegs = Reg(Vec(nDomain, UInt(w.W)))
     val throttleAcquireGet = RegInit(VecInit(Seq.fill(n)(false.B)))
     val throttleReleasePut = RegInit(VecInit(Seq.fill(n)(false.B)))
-    val domainId = Reg(Vec(n, UInt(log2Ceil(n).W)))
+    val domainId = Reg(Vec(n, UInt(log2Ceil(nDomain).W)))
 
     when (windowCntr >= windowSize || !enableBW) {
       windowCntr := 0.U
