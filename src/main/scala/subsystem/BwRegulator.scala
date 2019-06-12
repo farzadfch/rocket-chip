@@ -32,7 +32,7 @@ class BwRegulator(
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
-    val wbCost = Reg(UInt(2.W))
+    val wrCost = Reg(UInt(2.W))
     val rdCost = Reg(UInt(2.W))
     val windowCntr = Reg(UInt(w.W))
     val windowSize = Reg(UInt(w.W))
@@ -52,22 +52,16 @@ class BwRegulator(
       val (out, _) = node.out(i)
       val (in, edge_in) = node.in(i)
 
-      val aIsMemAddr = in.a.bits.address >= memBase
       val aIsAcquire = in.a.bits.opcode === TLMessages.AcquireBlock
-      val aCond = aIsMemAddr && aIsAcquire
-      import TLPermissions._
-      val cost = MuxLookup(in.a.bits.param, rdCost,
-        Array(NtoB -> rdCost, NtoT -> (rdCost + wbCost), BtoT -> (rdCost + wbCost)))
+      val cost = Mux(in.a.bits.param === TLPermissions.NtoB, rdCost, wrCost)
 
       out <> in
       when (enableBW && enableMasters(i)) {
         when (xactionCntrs(domainId(i)) + cost > maxXactionRegs(domainId(i))) {
-          when (aCond) {
             out.a.valid := false.B
             in.a.ready := false.B
-          }
         }
-        when (out.a.fire() && aCond) {
+        when (out.a.fire() && aIsAcquire) {
           xactionCntrs(domainId(i)) := xactionCntrs(domainId(i)) + cost
         }
       }
@@ -79,8 +73,8 @@ class BwRegulator(
       RegFieldDesc("enableBW", "Enable BW-regulator")),
       RegField(rdCost.getWidth, rdCost,
         RegFieldDesc("rdCost", "Read cost")),
-      RegField(wbCost.getWidth, wbCost,
-        RegFieldDesc("wbCost", "Writeback cost"))))
+      RegField(wrCost.getWidth, wrCost,
+        RegFieldDesc("wrCost", "Write cost"))))
 
     val windowRegField = Seq(4*1 -> Seq(RegField(windowSize.getWidth, windowSize,
       RegFieldDesc("windowsize", "Size of the window"))))
