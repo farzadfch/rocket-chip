@@ -27,12 +27,13 @@ class BwRegulator(
     require(n == node.out.length)
     require(n <= 32)
 
-    val w = 32
+    val wWndw = 32
+    val w = 24
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
-    val windowCntr = Reg(UInt(w.W))
-    val windowSize = Reg(UInt(w.W))
+    val windowCntr = Reg(UInt(wWndw.W))
+    val windowSize = Reg(UInt(wWndw.W))
     val readCntrs = Reg(Vec(nDomains, UInt(w.W)))
     val maxReadRegs = Reg(Vec(nDomains, UInt(w.W)))
     val writeCntrs = Reg(Vec(nDomains, UInt(w.W)))
