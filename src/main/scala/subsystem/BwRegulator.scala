@@ -26,6 +26,7 @@ class BwRegulator(
     val n = node.in.length
     require(n == node.out.length)
     require(n <= 32)
+    val memBase = p(ExtMem).get.base.U
 
     val wWndw = 32
     val w = 24
@@ -33,6 +34,7 @@ class BwRegulator(
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
+    val countInstFetch = RegInit(true.B)
     val windowCntr = Reg(UInt(wWndw.W))
     val windowSize = Reg(UInt(wWndw.W))
     val transCntrs = Reg(Vec(nDomains, UInt(w.W)))
@@ -53,8 +55,9 @@ class BwRegulator(
       val (in, edge_in) = node.in(i)
 
       val aIsAcquire = in.a.bits.opcode === TLMessages.AcquireBlock
-      val isWrite = in.a.bits.param === TLPermissions.NtoT || in.a.bits.param === TLPermissions.BtoT
-      val cost = Mux(isWrite, wrCost, 0.U) + 1.U
+      val aIsWrite = in.a.bits.param === TLPermissions.NtoT || in.a.bits.param === TLPermissions.BtoT
+      val aIsInstFetch = in.a.bits.opcode === TLMessages.Get && in.a.bits.address >= memBase
+      val cost = Mux(aIsWrite && aIsAcquire, wrCost, 0.U) + 1.U
 
       out <> in
       when (enableBW && enableMasters(i)) {
@@ -62,7 +65,7 @@ class BwRegulator(
             out.a.valid := false.B
             in.a.ready := false.B
         }
-        when (out.a.fire() && aIsAcquire) {
+        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)) {
           transCntrs(domainId(i)) := transCntrs(domainId(i)) + cost
         }
       }
@@ -72,6 +75,8 @@ class BwRegulator(
 
     val enableBWCostField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
       RegFieldDesc("enableBW", "Enable BW-regulator")),
+      RegField(countInstFetch.getWidth, countInstFetch,
+        RegFieldDesc("countInstFetch", "Count Instruction Fetch")),
       RegField(wrCost.getWidth, wrCost,
         RegFieldDesc("wrCost", "Write cost"))))
 
