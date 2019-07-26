@@ -34,7 +34,7 @@ class BwRegulator(
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
-    val countInstFetch = RegInit(true.B)
+    val countInstFetch = RegInit(false.B)
     val windowCntr = Reg(UInt(wWndw.W))
     val windowSize = Reg(UInt(wWndw.W))
     val transCntrs = Reg(Vec(nDomains, UInt(w.W)))
