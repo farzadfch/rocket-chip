@@ -31,9 +31,6 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
   val control_bus = LazyModule(new PeripheryBus(cbus_params))
   control_bus.crossFromSystemBus { this.toSlaveBus("cbus") }
 
-  private val bwRegulator = LazyModule(new BwRegulator(0x20000000L))
-  control_bus.toVariableWidthSlave(Some("bw-reg")) { bwRegulator.regnode }
-
   private val master_splitter = LazyModule(new TLSplitter)
   inwardNode :=* master_splitter.node
 
@@ -49,7 +46,7 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
     }
 
   def fromMasterBus(name: String): (=> TLOutwardNode) => NoHandle =
-    gen => from(s"bus_named_$name") { master_splitter.node :=* bwRegulator.node :=* gen }
+    gen => from(s"bus_named_$name") { master_splitter.node :=* gen }
 
   def toMemoryBus(gen: => TLInwardNode) {
     to("mbus") { gen := outwardNode }
@@ -66,7 +63,15 @@ class SystemBus(params: SystemBusParams)(implicit p: Parameters)
       (name: Option[String], buffer: BufferParams = BufferParams.none, cork: Option[Boolean] = None)
       (gen: => TLOutwardNode): NoHandle = {
     from("tile" named name) {
-      master_splitter.node := bwRegulator.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
+      master_splitter.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) :=* gen
+    }
+  }
+
+  def fromTileBwReg
+  (name: Option[String], buffer: BufferParams = BufferParams.none, cork: Option[Boolean] = None)
+  (gen: => TLOutwardNode): NoHandle = {
+    from("tile" named name) {
+      master_splitter.node :=* TLBuffer(buffer) :=* TLFIFOFixer(TLFIFOFixer.allUncacheable) := gen
     }
   }
 }

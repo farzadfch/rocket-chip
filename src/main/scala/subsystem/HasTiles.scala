@@ -15,7 +15,9 @@ import freechips.rocketchip.util._
 
 class ClockedTileInputs(implicit val p: Parameters) extends ParameterizedBundle
     with HasExternallyDrivenTileConstants
-    with Clocked
+    with Clocked {
+  val nWbInhibit = Bool(INPUT)
+}
 
 trait HasTiles { this: BaseSubsystem =>
   implicit val p: Parameters
@@ -45,6 +47,15 @@ trait HasTiles { this: BaseSubsystem =>
           .map { u => TLCacheCork(unsafe = u) }
           .map { _ :=* tile.crossMasterPort() }
           .getOrElse { tile.crossMasterPort() }
+    }
+  }
+
+  protected def connectMasterPortsToSBusBwReg(tile: BaseTile, crossing: RocketCrossingParams, bwReg: BwRegulator) {
+    sbus.fromTileBwReg(tile.tileParams.name, crossing.master.buffers) {
+      crossing.master.cork
+        .map { u => TLCacheCork(unsafe = u) }
+        .map { _ := bwReg.node :=* tile.crossMasterPort() }
+        .getOrElse { bwReg.node :=* tile.crossMasterPort() }
     }
   }
 
@@ -140,6 +151,7 @@ trait HasTilesModuleImp extends LazyModuleImp
     tile.reset := wire.reset
     tile.constants.hartid := wire.hartid
     tile.constants.reset_vector := wire.reset_vector
+    tile.constants.nWbInhibit := wire.nWbInhibit
   }
 }
 

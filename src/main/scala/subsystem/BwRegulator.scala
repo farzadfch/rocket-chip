@@ -8,15 +8,16 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
 
 class BwRegulator(
-    address: BigInt,
-    beatBytes: Int = 8)
+    address: BigInt)
     (implicit p: Parameters) extends LazyModule
 {
   val device = new SimpleDevice("bw-reg",Seq("ku-csl,bw-reg"))
+
   val regnode = new TLRegisterNode(
     address = Seq(AddressSet(address, 0x3f)),
     device = device,
-    beatBytes = beatBytes)
+    beatBytes = 8)
+
   val node = TLAdapterNode(
     clientFn  = { case c => c },
     managerFn = { case m => m })
@@ -26,8 +27,12 @@ class BwRegulator(
     val n = node.in.length
     require(n == node.out.length)
     require(n <= 32)
-    val memBase = p(ExtMem).get.base.U
 
+    val io = IO(new Bundle {
+      val nWbInhibit = Output(Vec(n, Bool()))
+    })
+
+    val memBase = p(ExtMem).get.base.U
     val wWndw = 32
     val w = 24
     val wWrCost = 3
@@ -60,10 +65,13 @@ class BwRegulator(
       val cost = Mux(aIsWrite && aIsAcquire, wrCost, 0.U) + 1.U
 
       out <> in
+      io.nWbInhibit(i) := true.B
+
       when (enableBW && enableMasters(i)) {
         when (transCntrs(domainId(i)) + cost > maxTransRegs(domainId(i))) {
             out.a.valid := false.B
             in.a.ready := false.B
+            io.nWbInhibit(i) := false.B
         }
         when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)) {
           transCntrs(domainId(i)) := transCntrs(domainId(i)) + cost
@@ -97,10 +105,9 @@ class BwRegulator(
     regnode.regmap(enableBWCostField ++ windowRegField ++ maxTransRegFields ++ enableMastersField ++
       domainIdFields: _*)
 
-    println("\nBW-regulated masters:")
+    println("BW-regulated masters:")
     for (i <- masterNames.indices)
-      println(s"$i: ${masterNames(i)}")
-    println
+      println(s"  $i: ${masterNames(i)}")
   }
 }
 
