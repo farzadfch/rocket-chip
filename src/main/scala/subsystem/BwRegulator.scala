@@ -39,14 +39,15 @@ class BwRegulator(
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
-    val countInstFetch = RegInit(false.B)
+    val countInstFetch = RegInit(true.B)
+    val countWb = RegInit(true.B)
+    val enIhibitWb = RegInit(true.B)
     val windowCntr = Reg(UInt(wWndw.W))
     val windowSize = Reg(UInt(wWndw.W))
     val transCntrs = Reg(Vec(nDomains, UInt(w.W)))
     val maxTransRegs = Reg(Vec(nDomains, UInt(w.W)))
     val enableMasters = Reg(Vec(n, Bool()))
     val domainId = Reg(Vec(n, UInt(log2Ceil(nDomains).W)))
-    val wrCost = Reg(UInt(wWrCost.W))
 
     when (windowCntr >= windowSize || !enableBW) {
       windowCntr := 0.U
@@ -56,53 +57,58 @@ class BwRegulator(
     }
 
     for (i <- 0 until n) {
-      val (out, _) = node.out(i)
+      val (out, edge_out) = node.out(i)
       val (in, edge_in) = node.in(i)
 
       val aIsAcquire = in.a.bits.opcode === TLMessages.AcquireBlock
-      val aIsWrite = in.a.bits.param === TLPermissions.NtoT || in.a.bits.param === TLPermissions.BtoT
       val aIsInstFetch = in.a.bits.opcode === TLMessages.Get && in.a.bits.address >= memBase
-      val cost = Mux(aIsWrite && aIsAcquire, wrCost, 0.U) + 1.U
+      // ReleaseData or ProbeAckData cause a PutFull in Broadcast Hub
+      val cIsWb = in.c.bits.opcode === TLMessages.ReleaseData || in.c.bits.opcode === TLMessages.ProbeAckData
 
       out <> in
       io.nWbInhibit(i) := true.B
 
       when (enableBW && enableMasters(i)) {
-        when (transCntrs(domainId(i)) + cost > maxTransRegs(domainId(i))) {
+        when (transCntrs(domainId(i)) >= maxTransRegs(domainId(i))) {
             out.a.valid := false.B
             in.a.ready := false.B
-            io.nWbInhibit(i) := false.B
+            when(enIhibitWb) {io.nWbInhibit(i) := false.B}
         }
-        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)) {
-          transCntrs(domainId(i)) := transCntrs(domainId(i)) + cost
+        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch) ||
+          out.c.fire() && edge_out.first(out.c) && cIsWb && countWb) {
+          transCntrs(domainId(i)) := transCntrs(domainId(i)) + 1.U
         }
       }
 
       masterNames(i) = edge_in.client.clients(0).name
     }
 
-    val enableBWCostField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
-      RegFieldDesc("enableBW", "Enable BW-regulator")),
-      RegField(countInstFetch.getWidth, countInstFetch,
-        RegFieldDesc("countInstFetch", "Count Instruction Fetch")),
-      RegField(wrCost.getWidth, wrCost,
-        RegFieldDesc("wrCost", "Write cost"))))
+    val enableBwRegField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
+      RegFieldDesc("enableBW", "Enable BW-regulator"))))
 
-    val windowRegField = Seq(4*1 -> Seq(RegField(windowSize.getWidth, windowSize,
+    val bwSettings = Seq(4*1 -> Seq(
+      RegField(countInstFetch.getWidth, countInstFetch,
+        RegFieldDesc("countInstFetch", "Count instruction fetch")),
+      RegField(countWb.getWidth, countWb,
+        RegFieldDesc("countWb", "Count writebacks")),
+      RegField(enIhibitWb.getWidth, enIhibitWb,
+        RegFieldDesc("enIhibitWb", "Enable writeback inhibit"))))
+
+    val windowRegField = Seq(4*2 -> Seq(RegField(windowSize.getWidth, windowSize,
       RegFieldDesc("windowsize", "Size of the window"))))
 
     val maxTransRegFields = maxTransRegs.zipWithIndex.map { case (reg, i) =>
-      4*(2 + i) -> Seq(RegField(reg.getWidth, reg,
+      4*(3 + i) -> Seq(RegField(reg.getWidth, reg,
       RegFieldDesc(s"max$i", s"Maximum transactions for domain $i"))) }
 
-    val enableMastersField = Seq(4*(2+nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
+    val enableMastersField = Seq(4*(3+nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
       RegField(bit.getWidth, bit, RegFieldDesc("enableMasters", s"Enable BW-regulator for ${masterNames(i)}")) })
 
     val domainIdFields = domainId.zipWithIndex.map { case (reg, i) =>
-      4*(3+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
+      4*(4+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
       RegFieldDesc(s"domainId$i", s"Domain ID for ${masterNames(i)}"))) }
 
-    regnode.regmap(enableBWCostField ++ windowRegField ++ maxTransRegFields ++ enableMastersField ++
+    regnode.regmap(enableBwRegField ++ bwSettings ++ windowRegField ++ maxTransRegFields ++ enableMastersField ++
       domainIdFields: _*)
 
     println("BW-regulated masters:")
