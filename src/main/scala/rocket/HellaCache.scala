@@ -138,7 +138,8 @@ class HellaCachePerfEvents extends Bundle {
   val grant = Bool()
   val tlbMiss = Bool()
   val acquireT = Bool()
-  val releaseDataT = Bool()
+  val releaseData = Bool()
+  val probeAckData = Bool()
 }
 
 // interface between D$ and processor/DTLB
