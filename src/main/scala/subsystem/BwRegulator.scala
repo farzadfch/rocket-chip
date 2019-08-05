@@ -8,8 +8,8 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
 
 class BwRegulator(
-    address: BigInt)
-    (implicit p: Parameters) extends LazyModule
+                   address: BigInt)
+                 (implicit p: Parameters) extends LazyModule
 {
   val device = new SimpleDevice("bw-reg",Seq("ku-csl,bw-reg"))
 
@@ -40,18 +40,20 @@ class BwRegulator(
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
     val countInstFetch = RegInit(true.B)
-    val countWb = RegInit(true.B)
     val enIhibitWb = RegInit(true.B)
     val windowCntr = Reg(UInt(wWndw.W))
     val windowSize = Reg(UInt(wWndw.W))
     val transCntrs = Reg(Vec(nDomains, UInt(w.W)))
     val maxTransRegs = Reg(Vec(nDomains, UInt(w.W)))
+    val transCntrsWr = Reg(Vec(nDomains, UInt(w.W)))
+    val maxTransRegsWr = Reg(Vec(nDomains, UInt(w.W)))
     val enableMasters = Reg(Vec(n, Bool()))
     val domainId = Reg(Vec(n, UInt(log2Ceil(nDomains).W)))
 
     when (windowCntr >= windowSize || !enableBW) {
       windowCntr := 0.U
       transCntrs.foreach(_ := 0.U)
+      transCntrsWr.foreach(_ := 0.U)
     } .otherwise {
       windowCntr := windowCntr + 1.U
     }
@@ -70,13 +72,17 @@ class BwRegulator(
 
       when (enableBW && enableMasters(i)) {
         when (transCntrs(domainId(i)) >= maxTransRegs(domainId(i))) {
-            out.a.valid := false.B
-            in.a.ready := false.B
-            when(enIhibitWb) {io.nWbInhibit(i) := false.B}
+          out.a.valid := false.B
+          in.a.ready := false.B
         }
-        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch) ||
-          out.c.fire() && edge_out.first(out.c) && cIsWb && countWb) {
+        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)) {
           transCntrs(domainId(i)) := transCntrs(domainId(i)) + 1.U
+        }
+        when (transCntrsWr(domainId(i)) >= maxTransRegsWr(domainId(i)) && enIhibitWb) {
+          io.nWbInhibit(i) := false.B
+        }
+        when (edge_out.done(out.c) && cIsWb) {
+          transCntrsWr(domainId(i)) := transCntrsWr(domainId(i)) + 1.U
         }
       }
 
@@ -89,8 +95,6 @@ class BwRegulator(
     val bwSettings = Seq(4*1 -> Seq(
       RegField(countInstFetch.getWidth, countInstFetch,
         RegFieldDesc("countInstFetch", "Count instruction fetch")),
-      RegField(countWb.getWidth, countWb,
-        RegFieldDesc("countWb", "Count writebacks")),
       RegField(enIhibitWb.getWidth, enIhibitWb,
         RegFieldDesc("enIhibitWb", "Enable writeback inhibit"))))
 
@@ -99,21 +103,24 @@ class BwRegulator(
 
     val maxTransRegFields = maxTransRegs.zipWithIndex.map { case (reg, i) =>
       4*(3 + i) -> Seq(RegField(reg.getWidth, reg,
-      RegFieldDesc(s"max$i", s"Maximum transactions for domain $i"))) }
+        RegFieldDesc(s"max$i", s"Maximum transactions for domain $i"))) }
 
-    val enableMastersField = Seq(4*(3+nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
+    val maxTransRegWrFields = maxTransRegsWr.zipWithIndex.map { case (reg, i) =>
+      4*(3+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
+        RegFieldDesc(s"max$i", s"Maximum transactions for domain $i"))) }
+
+    val enableMastersField = Seq(4*(3+2*nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
       RegField(bit.getWidth, bit, RegFieldDesc("enableMasters", s"Enable BW-regulator for ${masterNames(i)}")) })
 
     val domainIdFields = domainId.zipWithIndex.map { case (reg, i) =>
-      4*(4+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
-      RegFieldDesc(s"domainId$i", s"Domain ID for ${masterNames(i)}"))) }
+      4*(4+2*nDomains + i) -> Seq(RegField(reg.getWidth, reg,
+        RegFieldDesc(s"domainId$i", s"Domain ID for ${masterNames(i)}"))) }
 
-    regnode.regmap(enableBwRegField ++ bwSettings ++ windowRegField ++ maxTransRegFields ++ enableMastersField ++
-      domainIdFields: _*)
+    regnode.regmap(enableBwRegField ++ bwSettings ++ windowRegField ++ maxTransRegFields ++ maxTransRegWrFields ++
+      enableMastersField ++ domainIdFields: _*)
 
     println("BW-regulated masters:")
     for (i <- masterNames.indices)
       println(s"  $i: ${masterNames(i)}")
   }
 }
-
