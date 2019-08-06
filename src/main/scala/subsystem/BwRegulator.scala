@@ -7,9 +7,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
 
-class BwRegulator(
-                   address: BigInt)
-                 (implicit p: Parameters) extends LazyModule
+class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
 {
   val device = new SimpleDevice("bw-reg",Seq("ku-csl,bw-reg"))
 
