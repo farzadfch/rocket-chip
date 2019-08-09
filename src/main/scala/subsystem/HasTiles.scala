@@ -9,14 +9,15 @@ import freechips.rocketchip.devices.debug.TLDebugModule
 import freechips.rocketchip.devices.tilelink.{BasicBusBlocker, BasicBusBlockerParams, CLINT, CLINTConsts, TLPLIC}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.interrupts._
-import freechips.rocketchip.tile.{BaseTile, LookupByHartId, LookupByHartIdImpl, TileKey, TileParams, SharedMemoryTLEdge, HasExternallyDrivenTileConstants}
+import freechips.rocketchip.tile.{BaseTile, LookupByHartId, LookupByHartIdImpl, TileKey, TileParams, SharedMemoryTLEdge, HasExternallyDrivenTileConstants, TilePerfInputs}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 
 class ClockedTileInputs(implicit val p: Parameters) extends ParameterizedBundle
-    with HasExternallyDrivenTileConstants
-    with Clocked {
-  val nWbInhibit = Bool(INPUT)
+  with HasExternallyDrivenTileConstants
+  with Clocked {
+    val nWbInhibit = Bool(INPUT)
+    val perf = new TilePerfInputs
 }
 
 trait HasTiles { this: BaseSubsystem =>
@@ -152,6 +153,8 @@ trait HasTilesModuleImp extends LazyModuleImp
     tile.constants.hartid := wire.hartid
     tile.constants.reset_vector := wire.reset_vector
     tile.constants.nWbInhibit := wire.nWbInhibit
+    tile.constants.perf.blkdev_get := wire.perf.blkdev_get
+    tile.constants.perf.blkdev_put := wire.perf.blkdev_put
   }
 }
 

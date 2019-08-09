@@ -214,6 +214,13 @@ trait HasExternallyDrivenTileConstants extends Bundle with HasTileParameters {
   val reset_vector = UInt(INPUT, resetVectorLen)
 }
 
-class TileInputConstants(implicit val p: Parameters) extends ParameterizedBundle with HasExternallyDrivenTileConstants {
-  val nWbInhibit = Bool(INPUT)
+class TilePerfInputs extends Bundle {
+  val blkdev_put = Bool(INPUT)
+  val blkdev_get = Bool(INPUT)
+}
+
+class TileInputConstants(implicit val p: Parameters) extends ParameterizedBundle
+  with HasExternallyDrivenTileConstants {
+    val nWbInhibit = Bool(INPUT)
+    val perf = new TilePerfInputs()
 }
