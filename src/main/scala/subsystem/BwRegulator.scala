@@ -12,7 +12,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
   val device = new SimpleDevice("bw-reg",Seq("ku-csl,bw-reg"))
 
   val regnode = new TLRegisterNode(
-    address = Seq(AddressSet(address, 0x3f)),
+    address = Seq(AddressSet(address, 0x7f)),
     device = device,
     beatBytes = 8)
 
