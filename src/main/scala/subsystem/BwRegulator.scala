@@ -105,7 +105,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
 
     val maxTransRegWrFields = maxTransRegsWr.zipWithIndex.map { case (reg, i) =>
       4*(3+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
-        RegFieldDesc(s"max$i", s"Maximum transactions for domain $i"))) }
+        RegFieldDesc(s"max$i", s"Maximum writeback transactions for domain $i"))) }
 
     val enableMastersField = Seq(4*(3+2*nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
       RegField(bit.getWidth, bit, RegFieldDesc("enableMasters", s"Enable BW-regulator for ${masterNames(i)}")) })
