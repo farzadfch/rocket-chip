@@ -6,10 +6,11 @@ import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
+import midas.targetutils._
 
 class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
 {
-  val device = new SimpleDevice("bw-reg",Seq("ku-csl,bw-reg"))
+  val device = new SimpleDevice("bru",Seq("ku-csl,bru"))
 
   val regnode = new TLRegisterNode(
     address = Seq(AddressSet(address, 0x7f)),
@@ -33,7 +34,6 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val memBase = p(ExtMem).get.base.U
     val wWndw = 32
     val w = 24
-    val wWrCost = 3
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
@@ -47,6 +47,24 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val maxTransRegsWr = Reg(Vec(nDomains, UInt(w.W)))
     val enableMasters = Reg(Vec(n, Bool()))
     val domainId = Reg(Vec(n, UInt(log2Ceil(nDomains).W)))
+
+    val perfCycleW = 40
+    val perfCntrW = 40
+    val perfPeriodW = 24
+    val perfEnable = RegInit(false.B)
+    val perfPeriod = Reg(UInt(perfPeriodW.W))
+    val perfPeriodCntr = Reg(UInt(perfPeriodW.W))
+    val aCounter = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val cCounter = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val cycle = RegInit(0.U(perfCycleW.W))
+
+    cycle := cycle + 1.U
+
+    when (perfPeriodCntr >= perfPeriod || !perfEnable) {
+      perfPeriodCntr := 0.U
+    } .otherwise {
+      perfPeriodCntr := perfPeriodCntr + 1.U
+    }
 
     when (windowCntr >= windowSize || !enableBW) {
       windowCntr := 0.U
@@ -85,6 +103,12 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       }
 
       masterNames(i) = edge_in.client.clients(0).name
+
+      when (perfPeriodCntr === 0.U && perfEnable) {
+        printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounter(i), cCounter(i)))
+      }
+      when (out.a.fire() && (aIsAcquire || aIsInstFetch)) { aCounter(i) := aCounter(i) + 1.U }
+      when (edge_out.done(out.c) && cIsWb) { cCounter(i) := cCounter(i) + 1.U }
     }
 
     val enableBwRegField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
@@ -114,8 +138,14 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       4*(4+2*nDomains + i) -> Seq(RegField(reg.getWidth, reg,
         RegFieldDesc(s"domainId$i", s"Domain ID for ${masterNames(i)}"))) }
 
+    val perfField = Seq(4*(4+2*nDomains + n) -> Seq(
+      RegField(perfPeriod.getWidth, perfPeriod,
+        RegFieldDesc("perfPeriod", "perfPeriod")),
+      RegField(perfEnable.getWidth, perfEnable,
+        RegFieldDesc("perfEnable", "perfEnable"))))
+
     regnode.regmap(enableBwRegField ++ bwSettings ++ windowRegField ++ maxTransRegFields ++ maxTransRegWrFields ++
-      enableMastersField ++ domainIdFields: _*)
+      enableMastersField ++ domainIdFields ++ perfField: _*)
 
     println("BW-regulated masters:")
     for (i <- masterNames.indices)
