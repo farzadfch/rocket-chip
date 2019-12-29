@@ -32,8 +32,8 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     })
 
     val memBase = p(ExtMem).get.base.U
-    val wWndw = 32
-    val w = 24
+    val wWndw = 25 // for max 10ms period, F=2.13GHz
+    val w = wWndw - 3 // it can count up to a transaction per 8 cycles when window size is set to max
     val nDomains = n
     var masterNames = new Array[String](n)
     val enableBW = RegInit(false.B)
@@ -47,33 +47,41 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val maxTransRegsWr = Reg(Vec(nDomains, UInt(w.W)))
     val enableMasters = Reg(Vec(n, Bool()))
     val domainId = Reg(Vec(n, UInt(log2Ceil(nDomains).W)))
+    val masterTransActive = Wire(Vec(n, Bool()))
+    val masterWrTransActive = Wire(Vec(n, Bool()))
+    val throttleDomain = Wire(Vec(nDomains, Bool()))
+    val throttleDomainWr = Wire(Vec(nDomains, Bool()))
 
     val perfCycleW = 40
-    val perfCntrW = 40
     val perfPeriodW = 24
+    val perfCntrW = perfPeriodW - 3
     val perfEnable = RegInit(false.B)
     val perfPeriod = Reg(UInt(perfPeriodW.W))
     val perfPeriodCntr = Reg(UInt(perfPeriodW.W))
-    val aCounter = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
-    val cCounter = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val aCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val cCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
     val cycle = RegInit(0.U(perfCycleW.W))
 
     cycle := cycle + 1.U
+    val perfPeriodCntrReset = perfPeriodCntr >= perfPeriod
+    perfPeriodCntr := Mux(perfPeriodCntrReset || !perfEnable, 0.U, perfPeriodCntr + 1.U)
 
-    when (perfPeriodCntr >= perfPeriod || !perfEnable) {
-      perfPeriodCntr := 0.U
-    } .otherwise {
-      perfPeriodCntr := perfPeriodCntr + 1.U
+    val windowCntrReset = windowCntr >= windowSize
+    windowCntr := Mux(windowCntrReset || !enableBW, 0.U, windowCntr + 1.U)
+
+    // generator loop for domains
+    for (i <- 0 until nDomains) {
+      // bit vector for masters that are enabled & access mem in the current cycle & are assigned to domain i
+      val masterActiveMasked = (domainId zip masterTransActive).map { case (d, act) => d === i.U && act }
+      transCntrs(i) := Mux(enableBW, PopCount(masterActiveMasked) + Mux(windowCntrReset, 0.U, transCntrs(i)), 0.U)
+      throttleDomain(i) := transCntrs(i) >= maxTransRegs(i)
+
+      val masterWrActiveMasked = (domainId zip masterWrTransActive).map { case (d, act) => d === i.U && act }
+      transCntrsWr(i) := Mux(enableBW, PopCount(masterWrActiveMasked) + Mux(windowCntrReset, 0.U, transCntrsWr(i)), 0.U)
+      throttleDomainWr(i) := transCntrsWr(i) >= maxTransRegsWr(i)
     }
 
-    when (windowCntr >= windowSize || !enableBW) {
-      windowCntr := 0.U
-      transCntrs.foreach(_ := 0.U)
-      transCntrsWr.foreach(_ := 0.U)
-    } .otherwise {
-      windowCntr := windowCntr + 1.U
-    }
-
+    // generator loop for masters
     for (i <- 0 until n) {
       val (out, edge_out) = node.out(i)
       val (in, edge_in) = node.in(i)
@@ -83,32 +91,31 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       // ReleaseData or ProbeAckData cause a PutFull in Broadcast Hub
       val cIsWb = in.c.bits.opcode === TLMessages.ReleaseData || in.c.bits.opcode === TLMessages.ProbeAckData
 
+      masterTransActive(i) := enableMasters(i) && out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)
+      masterWrTransActive(i) := enableMasters(i) && edge_out.done(out.c) && cIsWb
+
       out <> in
       io.nWbInhibit(i) := true.B
 
       when (enableBW && enableMasters(i)) {
-        when (transCntrs(domainId(i)) >= maxTransRegs(domainId(i))) {
+        when (throttleDomain(domainId(i))) {
           out.a.valid := false.B
           in.a.ready := false.B
         }
-        when (out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)) {
-          transCntrs(domainId(i)) := transCntrs(domainId(i)) + 1.U
-        }
-        when (transCntrsWr(domainId(i)) >= maxTransRegsWr(domainId(i)) && enIhibitWb) {
+        when (throttleDomainWr(domainId(i)) && enIhibitWb) {
           io.nWbInhibit(i) := false.B
-        }
-        when (edge_out.done(out.c) && cIsWb) {
-          transCntrsWr(domainId(i)) := transCntrsWr(domainId(i)) + 1.U
         }
       }
 
       masterNames(i) = edge_in.client.clients(0).name
 
-      when (perfPeriodCntr === 0.U && perfEnable) {
-        printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounter(i), cCounter(i)))
+      when (perfPeriodCntrReset && perfEnable) {
+        printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounters(i), cCounters(i)))
       }
-      when (out.a.fire() && (aIsAcquire || aIsInstFetch)) { aCounter(i) := aCounter(i) + 1.U }
-      when (edge_out.done(out.c) && cIsWb) { cCounter(i) := cCounter(i) + 1.U }
+      aCounters(i) := Mux(perfEnable,
+        (out.a.fire() && (aIsAcquire || aIsInstFetch)) + Mux(perfPeriodCntrReset, 0.U, aCounters(i)), 0.U)
+      cCounters(i) := Mux(perfEnable,
+        (edge_out.done(out.c) && cIsWb) + Mux(perfPeriodCntrReset, 0.U, cCounters(i)), 0.U)
     }
 
     val enableBwRegField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
