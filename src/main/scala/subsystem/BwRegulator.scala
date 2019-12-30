@@ -52,14 +52,14 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val throttleDomain = Wire(Vec(nDomains, Bool()))
     val throttleDomainWr = Wire(Vec(nDomains, Bool()))
 
-    val perfCycleW = 40
-    val perfPeriodW = 24
+    val perfCycleW = 40 // about 8 minutes in target machine time
+    val perfPeriodW = 18 // max 100us
     val perfCntrW = perfPeriodW - 3
     val perfEnable = RegInit(false.B)
     val perfPeriod = Reg(UInt(perfPeriodW.W))
     val perfPeriodCntr = Reg(UInt(perfPeriodW.W))
-    val aCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
-    val cCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val aCounters = Reg(Vec(n, UInt(perfCntrW.W)))
+    val cCounters = Reg(Vec(n, UInt(perfCntrW.W)))
     val cycle = RegInit(0.U(perfCycleW.W))
 
     cycle := cycle + 1.U
@@ -73,11 +73,12 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     for (i <- 0 until nDomains) {
       // bit vector for masters that are enabled & access mem in the current cycle & are assigned to domain i
       val masterActiveMasked = (domainId zip masterTransActive).map { case (d, act) => d === i.U && act }
-      transCntrs(i) := Mux(enableBW, PopCount(masterActiveMasked) + Mux(windowCntrReset, 0.U, transCntrs(i)), 0.U)
+      // sbus accepts transaction from only one master in a cycle, so it's ok to reduce-or the active masters bit vector
+      transCntrs(i) := Mux(enableBW, masterActiveMasked.reduce(_||_) + Mux(windowCntrReset, 0.U, transCntrs(i)), 0.U)
       throttleDomain(i) := transCntrs(i) >= maxTransRegs(i)
 
       val masterWrActiveMasked = (domainId zip masterWrTransActive).map { case (d, act) => d === i.U && act }
-      transCntrsWr(i) := Mux(enableBW, PopCount(masterWrActiveMasked) + Mux(windowCntrReset, 0.U, transCntrsWr(i)), 0.U)
+      transCntrsWr(i) := Mux(enableBW, masterWrActiveMasked.reduce(_||_) + Mux(windowCntrReset, 0.U, transCntrsWr(i)), 0.U)
       throttleDomainWr(i) := transCntrsWr(i) >= maxTransRegsWr(i)
     }
 
@@ -118,8 +119,9 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
         (edge_out.done(out.c) && cIsWb) + Mux(perfPeriodCntrReset, 0.U, cCounters(i)), 0.U)
     }
 
-    val enableBwRegField = Seq(0 -> Seq(RegField(enableBW.getWidth, enableBW,
-      RegFieldDesc("enableBW", "Enable BW-regulator"))))
+    val enableBwRegField = Seq(0 -> Seq(
+      RegField(enableBW.getWidth, enableBW,
+        RegFieldDesc("enableBW", "Enable BW-regulator"))))
 
     val bwSettings = Seq(4*1 -> Seq(
       RegField(countInstFetch.getWidth, countInstFetch,
@@ -127,8 +129,9 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       RegField(enIhibitWb.getWidth, enIhibitWb,
         RegFieldDesc("enIhibitWb", "Enable writeback inhibit"))))
 
-    val windowRegField = Seq(4*2 -> Seq(RegField(windowSize.getWidth, windowSize,
-      RegFieldDesc("windowsize", "Size of the window"))))
+    val windowRegField = Seq(4*2 -> Seq(
+      RegField(windowSize.getWidth, windowSize,
+        RegFieldDesc("windowsize", "Size of the window"))))
 
     val maxTransRegFields = maxTransRegs.zipWithIndex.map { case (reg, i) =>
       4*(3 + i) -> Seq(RegField(reg.getWidth, reg,
@@ -138,21 +141,23 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       4*(3+nDomains + i) -> Seq(RegField(reg.getWidth, reg,
         RegFieldDesc(s"max$i", s"Maximum writeback transactions for domain $i"))) }
 
-    val enableMastersField = Seq(4*(3+2*nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
+    val enableMastersField = Seq(4*(3 + 2*nDomains) -> enableMasters.zipWithIndex.map { case (bit, i) =>
       RegField(bit.getWidth, bit, RegFieldDesc("enableMasters", s"Enable BW-regulator for ${masterNames(i)}")) })
 
     val domainIdFields = domainId.zipWithIndex.map { case (reg, i) =>
-      4*(4+2*nDomains + i) -> Seq(RegField(reg.getWidth, reg,
+      4*(4 + 2*nDomains + i) -> Seq(RegField(reg.getWidth, reg,
         RegFieldDesc(s"domainId$i", s"Domain ID for ${masterNames(i)}"))) }
 
-    val perfField = Seq(4*(4+2*nDomains + n) -> Seq(
-      RegField(perfPeriod.getWidth, perfPeriod,
-        RegFieldDesc("perfPeriod", "perfPeriod")),
+    val perfEnField = Seq(4*(4 + 2*nDomains + n) -> Seq(
       RegField(perfEnable.getWidth, perfEnable,
         RegFieldDesc("perfEnable", "perfEnable"))))
 
+    val perfPeriodField = Seq(4*(5 + 2*nDomains + n) -> Seq(
+      RegField(perfPeriod.getWidth, perfPeriod,
+        RegFieldDesc("perfPeriod", "perfPeriod"))))
+
     regnode.regmap(enableBwRegField ++ bwSettings ++ windowRegField ++ maxTransRegFields ++ maxTransRegWrFields ++
-      enableMastersField ++ domainIdFields ++ perfField: _*)
+      enableMastersField ++ domainIdFields ++ perfEnField ++ perfPeriodField: _*)
 
     println("BW-regulated masters:")
     for (i <- masterNames.indices)
