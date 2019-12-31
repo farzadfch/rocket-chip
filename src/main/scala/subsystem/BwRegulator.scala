@@ -58,8 +58,10 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val perfEnable = RegInit(false.B)
     val perfPeriod = Reg(UInt(perfPeriodW.W))
     val perfPeriodCntr = Reg(UInt(perfPeriodW.W))
-    val aCounters = Reg(Vec(n, UInt(perfCntrW.W)))
-    val cCounters = Reg(Vec(n, UInt(perfCntrW.W)))
+    // It is not required to reset these counters but we keep it for now as it helps to close timing
+    //  more easily in PnR
+    val aCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
+    val cCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
     val cycle = RegInit(0.U(perfCycleW.W))
 
     cycle := cycle + 1.U
