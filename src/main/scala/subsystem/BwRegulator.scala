@@ -110,7 +110,8 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
         }
       }
 
-      masterNames(i) = edge_in.client.clients(0).name
+      // DCache and ICache
+      masterNames(i) = edge_in.client.clients(0).name + ", " + edge_in.client.clients(2).name
 
       when (perfPeriodCntrReset && perfEnable) {
         printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounters(i), cCounters(i)))
