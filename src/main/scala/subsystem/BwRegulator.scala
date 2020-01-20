@@ -17,9 +17,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     device = device,
     beatBytes = 8)
 
-  val node = TLAdapterNode(
-    clientFn  = { case c => c },
-    managerFn = { case m => m })
+  val node = TLAdapterNode()
 
   lazy val module = new LazyModuleImp(this)
   {
