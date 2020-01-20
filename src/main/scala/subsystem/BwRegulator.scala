@@ -21,8 +21,8 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
 
   lazy val module = new LazyModuleImp(this)
   {
+    // A TLAdapterNode has equal number of input and output edges
     val n = node.in.length
-    require(n == node.out.length)
     require(n <= 32)
 
     val io = IO(new Bundle {
