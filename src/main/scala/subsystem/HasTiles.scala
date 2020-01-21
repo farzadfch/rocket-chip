@@ -51,7 +51,7 @@ trait HasTiles { this: BaseSubsystem =>
     }
   }
 
-  protected def connectMasterPortsToSBusBwReg(tile: BaseTile, crossing: RocketCrossingParams, bwReg: BwRegulator) {
+  protected def connectMasterPortsToSBusBwReg(tile: BaseTile, crossing: RocketCrossingParams, bwReg: BwRegulator2) {
     sbus.fromTileBwReg(tile.tileParams.name, crossing.master.buffers) {
       crossing.master.cork
         .map { u => TLCacheCork(unsafe = u) }
