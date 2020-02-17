@@ -2,6 +2,7 @@ package freechips.rocketchip.subsystem
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental._
 import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
@@ -50,6 +51,11 @@ class BwRegulator2(address: BigInt) (implicit p: Parameters) extends LazyModule
     val throttleDomain = Wire(Vec(nDomains, Bool()))
     val throttleDomainWr = Wire(Vec(nDomains, Bool()))
 
+    val transDelayCntrW = 10
+    val endSourceId = node.in(0)._2.client.endSourceId
+    val transDelayCntrs = Reg(Vec(endSourceId, UInt(transDelayCntrW.W)))
+    dontTouch(transDelayCntrs)
+
     val perfCycleW = 40 // about 8 minutes in target machine time
     val perfPeriodW = 18 // max 100us
     val perfCntrW = perfPeriodW - 3
@@ -84,7 +90,7 @@ class BwRegulator2(address: BigInt) (implicit p: Parameters) extends LazyModule
 
     // generator loop for masters
     for (i <- 0 until n) {
-      val (out, edge_out) = node.out(i)
+      val (out, _) = node.out(i)
       val (in, edge_in) = node.in(i)
 
       val aIsAcquire = in.a.bits.opcode === TLMessages.AcquireBlock
@@ -92,8 +98,8 @@ class BwRegulator2(address: BigInt) (implicit p: Parameters) extends LazyModule
       // ReleaseData or ProbeAckData cause a PutFull in Broadcast Hub
       val cIsWb = in.c.bits.opcode === TLMessages.ReleaseData || in.c.bits.opcode === TLMessages.ProbeAckData
 
-      masterTransActive(i) := enableMasters(i) && out.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)
-      masterWrTransActive(i) := enableMasters(i) && edge_out.done(out.c) && cIsWb
+      masterTransActive(i) := enableMasters(i) && in.a.fire() && (aIsAcquire || aIsInstFetch && countInstFetch)
+      masterWrTransActive(i) := enableMasters(i) && edge_in.done(in.c) && cIsWb
 
       out <> in
       io.nWbInhibit(i) := true.B
@@ -111,13 +117,39 @@ class BwRegulator2(address: BigInt) (implicit p: Parameters) extends LazyModule
       // DCache and ICache
       masterNames(i) = edge_in.client.clients(0).name + ", " + edge_in.client.clients(2).name
 
+      if (i == 0) {
+        transDelayCntrs.foreach { c =>
+          c := c + 1.U
+        }
+
+        when(in.a.fire()) {
+          transDelayCntrs(in.a.bits.source) := 0.U
+        }
+
+        when(in.c.fire() && edge_in.first(in.c) && in.c.bits.opcode === TLMessages.ReleaseData) {
+          transDelayCntrs(in.c.bits.source) := 0.U
+        }
+
+        val printDelay = MuxLookup(in.d.bits.source, 0.U,
+          Array(0.U -> transDelayCntrs(0),
+            1.U -> transDelayCntrs(1),
+            2.U -> transDelayCntrs(2),
+            3.U -> transDelayCntrs(3),
+            4.U -> transDelayCntrs(4),
+            8.U -> transDelayCntrs(8)))
+
+        when(in.d.fire() && edge_in.first(in.d)) {
+          printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, in.d.bits.source, printDelay))
+        }
+      }
+
       when (perfPeriodCntrReset && perfEnable) {
         printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounters(i), cCounters(i)))
       }
       aCounters(i) := Mux(perfEnable,
-        (out.a.fire() && (aIsAcquire || aIsInstFetch)) + Mux(perfPeriodCntrReset, 0.U, aCounters(i)), 0.U)
+        (in.a.fire() && (aIsAcquire || aIsInstFetch)) + Mux(perfPeriodCntrReset, 0.U, aCounters(i)), 0.U)
       cCounters(i) := Mux(perfEnable,
-        (edge_out.done(out.c) && cIsWb) + Mux(perfPeriodCntrReset, 0.U, cCounters(i)), 0.U)
+        (edge_in.done(in.c) && cIsWb) + Mux(perfPeriodCntrReset, 0.U, cCounters(i)), 0.U)
     }
 
     val enableBwRegField = Seq(0 -> Seq(
