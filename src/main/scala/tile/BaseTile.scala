@@ -221,6 +221,6 @@ class TilePerfInputs extends Bundle {
 
 class TileInputConstants(implicit val p: Parameters) extends ParameterizedBundle
   with HasExternallyDrivenTileConstants {
-    val nWbInhibit = Bool(INPUT)
+    val nThrottleWb = Bool(INPUT)
     val perf = new TilePerfInputs()
 }

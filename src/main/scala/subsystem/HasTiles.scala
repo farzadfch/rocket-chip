@@ -16,7 +16,7 @@ import freechips.rocketchip.util._
 class ClockedTileInputs(implicit val p: Parameters) extends ParameterizedBundle
   with HasExternallyDrivenTileConstants
   with Clocked {
-    val nWbInhibit = Bool(INPUT)
+    val nThrottleWb = Bool(INPUT)
     val perf = new TilePerfInputs
 }
 
@@ -152,7 +152,7 @@ trait HasTilesModuleImp extends LazyModuleImp
     tile.reset := wire.reset
     tile.constants.hartid := wire.hartid
     tile.constants.reset_vector := wire.reset_vector
-    tile.constants.nWbInhibit := wire.nWbInhibit
+    tile.constants.nThrottleWb := wire.nThrottleWb
     tile.constants.perf.blkdev_get := wire.perf.blkdev_get
     tile.constants.perf.blkdev_put := wire.perf.blkdev_put
   }
