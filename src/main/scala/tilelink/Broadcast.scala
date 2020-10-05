@@ -139,7 +139,7 @@ class TLBroadcast(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = fa
       // Combine ReleaseAck or the modified D
       TLArbiter.lowest(edgeOut, in.d, releaseack, d_normal)
       // Combine the PutFull with the trackers
-      TLArbiter.lowestFromSeq(edgeOut, out.a, putfull +: trackers.map(_.out_a))
+      TLArbiter.robinFromSeq(edgeOut, out.a, putfull +: trackers.map(_.out_a))
 
       // The Probe FSM walks all caches and probes them
       val probe_todo = RegInit(UInt(0, width = max(1, caches.size)))

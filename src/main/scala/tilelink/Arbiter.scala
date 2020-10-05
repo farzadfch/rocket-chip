@@ -35,6 +35,10 @@ object TLArbiter
     apply(lowestIndexFirst)(sink, sources.toList.map(s => (edge.numBeats1(s.bits), s)):_*)
   }
 
+  def robinFromSeq[T <: TLChannel](edge: TLEdge, sink: DecoupledIO[T], sources: Seq[DecoupledIO[T]]) {
+    apply(roundRobin)(sink, sources.map(s => (edge.numBeats1(s.bits), s)):_*)
+  }
+
   def robin[T <: TLChannel](edge: TLEdge, sink: DecoupledIO[T], sources: DecoupledIO[T]*) {
     apply(roundRobin)(sink, sources.toList.map(s => (edge.numBeats1(s.bits), s)):_*)
   }
