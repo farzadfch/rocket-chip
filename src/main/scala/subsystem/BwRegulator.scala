@@ -6,6 +6,7 @@ import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
+import freechips.rocketchip.util._
 import midas.targetutils._
 
 class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
@@ -51,7 +52,16 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val throttleDomain = Wire(Vec(nDomains, Bool()))
     val throttleDomainWb = Wire(Vec(nDomains, Bool()))
 
-    val perfCycleW = 40 // about 8 minutes in target machine time
+    val cycleW = 40 // about 8 minutes in target machine time
+    val cycle = WideCounter(cycleW)
+
+    val enablePrintDelay = true
+    val transDelayCntrW = 10
+    val printDelayEnable = RegInit(false.B)
+    val endSourceId = node.in(0)._2.client.endSourceId
+    val transDelayCntrs = Reg(Vec(endSourceId, UInt(transDelayCntrW.W)))
+
+    val enablePerf = false
     val perfPeriodW = 18 // max 100us
     val perfCntrW = perfPeriodW - 3
 
@@ -62,9 +72,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     //  more easily in PnR
     val aCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
     val cCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
-    val cycle = RegInit(0.U(perfCycleW.W))
 
-    cycle := cycle + 1.U
     val perfPeriodCntrReset = perfPeriodCntr >= perfPeriod
     perfPeriodCntr := Mux(perfPeriodCntrReset || !perfEnable, 0.U, perfPeriodCntr + 1.U)
 
@@ -113,8 +121,35 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       // DCache and ICache
       clientNames(i) = edge_in.client.clients(0).name + ", " + edge_in.client.clients(2).name
 
-      when (perfPeriodCntrReset && perfEnable) {
-        printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounters(i), cCounters(i)))
+      // Measure access latency
+      if (enablePrintDelay && i == 3) {
+        transDelayCntrs.foreach { c =>
+          c := c + 1.U
+        }
+        when(in.a.fire()) {
+          transDelayCntrs(in.a.bits.source) := 0.U
+        }
+        when(in.c.fire() && in.c.bits.opcode === TLMessages.ReleaseData) {
+          transDelayCntrs(in.c.bits.source) := 0.U
+        }
+
+        val printDelay = MuxLookup(in.d.bits.source, 0.U,
+          Array(0.U -> transDelayCntrs(0),
+            1.U -> transDelayCntrs(1),
+            2.U -> transDelayCntrs(2),
+            3.U -> transDelayCntrs(3),
+            8.U -> transDelayCntrs(8)))
+
+        when(printDelayEnable && in.d.fire() && edge_in.first(in.d)) {
+          printf(SynthesizePrintf("%d %d %d %d %d\n", cycle, i.U, in.d.bits.opcode, in.d.bits.source, printDelay))
+        }
+      }
+
+      // Performance counters
+      if (enablePerf) {
+        when(perfPeriodCntrReset && perfEnable) {
+          printf(SynthesizePrintf("%d %d %d %d\n", cycle, i.U, aCounters(i), cCounters(i)))
+        }
       }
       aCounters(i) := Mux(perfEnable,
         (out.a.fire() && (aIsAcquire || aIsInstFetch)) + Mux(perfPeriodCntrReset, 0.U, aCounters(i)), 0.U)
@@ -159,8 +194,12 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       RegField(perfPeriod.getWidth, perfPeriod,
         RegFieldDesc("perfPeriod", "perfPeriod"))))
 
+    val printDelayEnField = Seq(4*(6 + 2*nDomains + n) -> Seq(
+      RegField(printDelayEnable.getWidth, printDelayEnable,
+        RegFieldDesc("printDelayEnable", "Enable print delay"))))
+
     regnode.regmap(enBRUGlobalRegField ++ settingsRegField ++ periodLenRegField ++ maxAccRegFields ++ maxWbRegFields ++
-      bwREnablesField ++ domainIdFields ++ perfEnField ++ perfPeriodField: _*)
+      bwREnablesField ++ domainIdFields ++ perfEnField ++ perfPeriodField ++ printDelayEnField: _*)
 
     println("Bandwidth regulation (BRU):")
     for (i <- clientNames.indices)
