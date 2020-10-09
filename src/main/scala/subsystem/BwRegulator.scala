@@ -53,7 +53,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val throttleDomainWb = Wire(Vec(nDomains, Bool()))
 
     val cycleW = 40 // about 8 minutes in target machine time
-    val cycle = WideCounter(cycleW)
+    val cycle = RegInit(0.U(cycleW.W))
 
     val enablePrintDelay = true
     val transDelayCntrW = 10
@@ -61,13 +61,16 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val endSourceId = node.in(0)._2.client.endSourceId
     val transDelayCntrs = Reg(Vec(endSourceId, UInt(transDelayCntrW.W)))
 
-    val enablePerf = false
+    val enablePerf = true
     val perfPeriodW = 18 // max 100us
     val perfCntrW = perfPeriodW - 3
 
     val perfEnable = RegInit(false.B)
     val perfPeriod = Reg(UInt(perfPeriodW.W))
     val perfPeriodCntr = Reg(UInt(perfPeriodW.W))
+
+    cycle := cycle + 1.U
+
     // It is not required to reset these counters but we keep it for now as it helps to close timing
     //  more easily in PnR
     val aCounters = RegInit(VecInit(Seq.fill(n)(0.U(perfCntrW.W))))
