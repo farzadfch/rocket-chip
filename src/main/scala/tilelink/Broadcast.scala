@@ -8,7 +8,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 import scala.math.{min,max}
 
-class TLBroadcast(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = false)(implicit p: Parameters) extends LazyModule
+class TLBroadcast(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = false, roundRobinA: Boolean = false)(implicit p: Parameters) extends LazyModule
 {
   require (lineBytes > 0 && isPow2(lineBytes))
   require (numTrackers > 0)
@@ -139,7 +139,11 @@ class TLBroadcast(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = fa
       // Combine ReleaseAck or the modified D
       TLArbiter.lowest(edgeOut, in.d, releaseack, d_normal)
       // Combine the PutFull with the trackers
-      TLArbiter.robinFromSeq(edgeOut, out.a, putfull +: trackers.map(_.out_a))
+      if(roundRobinA) {
+        println("Round-robin BH")
+        TLArbiter.robinFromSeq(edgeOut, out.a, putfull +: trackers.map(_.out_a))
+      } else
+        TLArbiter.lowestFromSeq(edgeOut, out.a, putfull +: trackers.map(_.out_a))
 
       // The Probe FSM walks all caches and probes them
       val probe_todo = RegInit(UInt(0, width = max(1, caches.size)))
@@ -208,9 +212,9 @@ class TLBroadcast(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = fa
 
 object TLBroadcast
 {
-  def apply(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = false)(implicit p: Parameters): TLNode =
+  def apply(lineBytes: Int, numTrackers: Int = 4, bufferless: Boolean = false, roundRobinA: Boolean = false)(implicit p: Parameters): TLNode =
   {
-    val broadcast = LazyModule(new TLBroadcast(lineBytes, numTrackers, bufferless))
+    val broadcast = LazyModule(new TLBroadcast(lineBytes, numTrackers, bufferless, roundRobinA))
     broadcast.node
   }
 }
