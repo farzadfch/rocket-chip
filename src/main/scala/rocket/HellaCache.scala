@@ -191,6 +191,8 @@ class HellaCacheBundle(val outer: HellaCache)(implicit p: Parameters) extends Co
   val ptw = new TLBPTWIO()
   val errors = new DCacheErrors
   val nThrottleWb = Bool(INPUT)
+  //val wb = Decoupled(new TLBundleC(outer.node.edges.out(0).bundle))
+  val wb = Bool(OUTPUT)
 }
 
 class HellaCacheModule(outer: HellaCache) extends LazyModuleImp(outer)

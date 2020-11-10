@@ -6,7 +6,6 @@ import freechips.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.regmapper._
-import freechips.rocketchip.util._
 import midas.targetutils._
 
 class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
@@ -28,6 +27,7 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
 
     val io = IO(new Bundle {
       val nThrottleWb = Output(Vec(n, Bool()))
+      val wb = Input(Vec(n, Bool()))
     })
 
     val memBase = p(ExtMem).get.base.U
@@ -82,6 +82,29 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
     val periodCntrReset = periodCntr >= periodLen
     periodCntr := Mux(periodCntrReset || !enBRUGlobal, 0.U, periodCntr + 1.U)
 
+
+    val wbOut = Wire(node.out(0)._1.c.cloneType)
+    wbOut.ready := !throttleDomainWb(0) || !enWbThrottle || !enBRUGlobal
+
+    val wbIn = (node.in, io.nThrottleWb, io.wb).zipped.map{ case (inode, nThrottleWb, wb) =>
+      val InC = Wire(inode._1.c.cloneType)
+      InC.valid := wb
+      nThrottleWb := InC.ready
+      InC.bits.opcode := TLMessages.ReleaseData
+      InC.bits.size := 6.U
+      InC.bits.address := 0.U
+      InC.bits.corrupt := false.B
+      InC.bits.data := 0.U
+      InC.bits.param := 0.U
+      InC.bits.source := 0.U
+
+      InC
+    }
+
+    TLArbiter.robinFromSeq(node.out(0)._2, wbOut, wbIn)
+
+    val wbAct = node.out(0)._2.done(wbOut)
+
     // generator loop for domains
     for (i <- 0 until nDomains) {
       // bit vector for cores that are enabled & access mem in the current cycle & are assigned to domain i
@@ -90,8 +113,9 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       accCntrs(i) := Mux(enBRUGlobal, coreAccActMasked.reduce(_||_) + Mux(periodCntrReset, 0.U, accCntrs(i)), 0.U)
       throttleDomain(i) := accCntrs(i) >= maxAccs(i)
 
-      val coreWbActMasked = (domainIds zip coreWbActive).map { case (d, act) => d === i.U && act }
-      wbCntrs(i) := Mux(enBRUGlobal, coreWbActMasked.reduce(_||_) + Mux(periodCntrReset, 0.U, wbCntrs(i)), 0.U)
+//      val coreWbActMasked = (domainIds zip coreWbActive).map { case (d, act) => d === i.U && act }
+//      wbCntrs(i) := Mux(enBRUGlobal, coreWbActMasked.reduce(_||_) + Mux(periodCntrReset, 0.U, wbCntrs(i)), 0.U)
+      wbCntrs(i) := Mux(enBRUGlobal, wbAct + Mux(periodCntrReset, 0.U, wbCntrs(i)), 0.U)
       throttleDomainWb(i) := wbCntrs(i) >= maxWbs(i)
     }
 
@@ -109,16 +133,16 @@ class BwRegulator(address: BigInt) (implicit p: Parameters) extends LazyModule
       coreWbActive(i) := bwREnables(i) && edge_out.done(out.c) && cIsWb
 
       out <> in
-      io.nThrottleWb(i) := true.B
+//      io.nThrottleWb(i) := true.B
 
       when (enBRUGlobal && bwREnables(i)) {
         when (throttleDomain(domainIds(i))) {
           out.a.valid := false.B
           in.a.ready := false.B
         }
-        when (throttleDomainWb(domainIds(i)) && enWbThrottle) {
-          io.nThrottleWb(i) := false.B
-        }
+//        when (throttleDomainWb(domainIds(i)) && enWbThrottle) {
+//          io.nThrottleWb(i) := false.B
+//        }
       }
 
       // DCache and ICache
