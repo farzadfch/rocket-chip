@@ -163,6 +163,9 @@ class MSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCach
   val req_tag = req.addr >> untagBits
   val req_block_addr = (req.addr >> blockOffBits) << blockOffBits
   val idx_match = req_idx === io.req_bits.addr(untagBits-1,blockOffBits)
+  val old_tag = Reg(UInt(width=tagBits))
+  val old_coh_valid = Reg(Bool())
+  val old_tag_match = old_tag === (io.req_bits.addr >> untagBits)
 
   val new_coh = Reg(init=ClientMetadata.onReset)
   val (_, shrink_param, coh_on_clear)    = req.old_meta.coh.onCacheControl(M_FLUSH)
@@ -225,6 +228,8 @@ class MSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCach
   when (io.req_pri_val && io.req_pri_rdy) {
     req := io.req_bits
     val old_coh = io.req_bits.old_meta.coh
+    old_coh_valid := old_coh.isValid()
+    old_tag := io.req_bits.old_meta.tag
     val needs_wb = old_coh.onCacheControl(M_FLUSH)._1
     val (is_hit, _, coh_on_hit) = old_coh.onAccess(io.req_bits.cmd)
     when (io.req_bits.tag_match) {
@@ -259,7 +264,8 @@ class MSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCach
   val meta_hazard = Reg(init=UInt(0,2))
   when (meta_hazard =/= UInt(0)) { meta_hazard := meta_hazard + 1 }
   when (io.meta_write.fire()) { meta_hazard := 1 }
-  io.probe_rdy := !idx_match || (!state.isOneOf(states_before_refill) && meta_hazard === 0) 
+  // Block Prober if the probed line is being evicted. Unblock once eviction completes.
+  io.probe_rdy := !(idx_match && old_tag_match && old_coh_valid) || (!state.isOneOf(states_before_refill) && meta_hazard === 0)
 
   io.meta_write.valid := state.isOneOf(s_meta_write_req, s_meta_clear)
   io.meta_write.bits.idx := req_idx
